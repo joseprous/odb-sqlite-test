@@ -12,7 +12,7 @@
 using namespace std;
 using namespace odb::core;
 
-void create_person_table(odb::sqlite::database& db)
+void create_person_table(shared_ptr<odb::sqlite::database> db)
 {
     unsigned long john_id, jane_id, joe_id;
 
@@ -24,27 +24,25 @@ void create_person_table(odb::sqlite::database& db)
     person joe ("Joe", "Dirt", 30);
 
     {
-        transaction t (db.begin());
-
-        odb::schema_catalog::create_schema(db);
+        transaction t (db->begin());
 
         // Make objects persistent and save their ids for later use.
         //
-        john_id = db.persist (john);
-        jane_id = db.persist (jane);
-        joe_id = db.persist (joe);
+        john_id = db->persist (john);
+        jane_id = db->persist (jane);
+        joe_id = db->persist (joe);
         
         t.commit ();
     }    
 }
 
-void query_person(odb::sqlite::database& db)
+void query_person(shared_ptr<odb::sqlite::database> db)
 {
     typedef odb::query<person> query;
 
-    transaction t (db.begin());
+    transaction t (db->begin());
             
-    auto r (db.query<person>(query::age > 30));
+    auto r (db->query<person>(query::age > 30));
 
     for (auto i:r){
         cout << "Hello, " << i.first() << "!" << endl;
@@ -53,12 +51,38 @@ void query_person(odb::sqlite::database& db)
     t.commit ();
 }
 
+shared_ptr<odb::sqlite::database> open_database(string name, bool create=false)
+{       
+    int flags = SQLITE_OPEN_READWRITE;
+    if (create) flags |= SQLITE_OPEN_CREATE;
+
+    shared_ptr<odb::sqlite::database> db(new odb::sqlite::database(name, flags) );
+    
+    transaction t (db->begin());
+    if (create){
+        odb::schema_catalog::create_schema(*db);
+    }    
+    t.commit ();
+    
+    return db;
+}
+
+shared_ptr<odb::sqlite::database> open_create_database(string name)
+{
+    std::shared_ptr<odb::sqlite::database> db;
+    try{
+        db = open_database(name);
+    }catch (const odb::exception& e){
+        db = open_database(name,true);            
+    }
+    return db;
+}
+
+
 int main (int argc, char* argv[])
 {
     try{
-        odb::sqlite::database db ("test.db",
-                                  SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
-                
+        auto db = open_create_database("test.db");
         create_person_table(db);
         query_person(db);
     }
